@@ -1,0 +1,232 @@
+@page "/"
+@using System.Diagnostics
+@using System.Globalization
+@inject IJSRuntime JS
+
+<PageTitle>PDF Viewer performance (Blazor Server)</PageTitle>
+
+<div class="app">
+    @* The single result message: how long the last viewer action took *@
+    <div class="result-bar @BarClass" role="status" aria-live="polite">
+        <span class="result-icon" aria-hidden="true">
+            @if (pending is not null)
+            {
+                <span class="spinner"></span>
+            }
+            else
+            {
+
+                <text>⚡</text>
+            }
+        </span>
+        <span class="result-text">@ResultText</span>
+    </div>
+
+    @* The standard Syncfusion PDF Viewer with its built-in toolbar *@
+    <div class="viewer-host">
+        <SfPdfViewer2 DocumentPath="@DocumentPath" Height="100%" Width="100%">
+            <PdfViewerEvents DocumentLoaded="OnDocumentLoaded"
+                             DocumentUnloaded="OnDocumentUnloaded"
+                             PageChanged="OnPageChanged"
+                             DownloadStart="OnDownloadStart"
+                             DownloadEnd="OnDownloadEnd"
+                             PrintStart="OnPrintStart"
+                             PrintEnd="OnPrintEnd"
+                             OnTextSearchStart="OnTextSearchStart"
+                             OnTextSearchHighlight="OnTextSearchHighlight"
+                             Created="OnCreated" />
+        </SfPdfViewer2>
+    </div>
+</div>
+
+@code {
+    /// <summary>Default document, relative to wwwroot.</summary>
+    private const string DocumentPath = "wwwroot/samples/1000 pages.pdf";
+
+    /// <summary>A click, key press, or scroll this recent (ms) counts as the start of a page change.</summary>
+    private const int InteractionWindowMs = 1000;
+
+    /// <summary>
+    /// Blazor has no equivalent of the React debounce, so the finalize timer is keyed
+    /// off the elapsed time since the last highlight. Once that gap exceeds this value
+    /// the search is treated as complete. The same window also covers the no-match
+    /// case, because `OnTextSearchHighlight` never fires when there are zero matches.
+    /// </summary>
+    private const int SearchFinalizeDelayMs = 300;
+
+    private static readonly Dictionary<string, string> PendingText = new()
+    {
+        ["load"] = "Opening document…",
+        ["download"] = "Preparing download…",
+        ["print"] = "Preparing to print…",
+        ["search"] = "Searching…",
+    };
+
+    private const string IdleText = "Use the toolbar to open, search, navigate, print, or download. Each action is timed.";
+
+    private readonly Dictionary<string, Stopwatch> timers = new();
+    private System.Timers.Timer? searchFinalizeTimer;
+    private string? pending;
+    private string? message;
+    private int pageCount;
+
+    // Text search state
+    private string searchTerm = "";
+    private int searchMatchCount;
+    private double firstMatchMs;
+    private bool searchLogged;
+
+    private string ResultText => pending is not null ? PendingText[pending] : message ?? IdleText;
+    private string BarClass => pending is not null ? "is-pending" : message is not null ? "is-done" : "";
+
+    // ------------------------------------------------------------------ stopwatch
+
+    private void OnCreated()
+    {
+        // The first document starts loading when the PDF Viewer is created.
+        Start("load");
+    }
+
+    private void Start(string action)
+    {
+        timers[action] = Stopwatch.StartNew();
+        pending = action;
+    }
+
+    private void Finish(string action, Func<string, string> describe)
+
+    {
+
+        if (!timers.Remove(action, out var stopwatch)) return;
+
+        message = describe(FormatDuration(stopwatch.Elapsed.TotalMilliseconds));
+
+        if (pending == action) pending = null;
+
+        Console.WriteLine($"[PDF Viewer performance] {message}");
+
+        StateHasChanged();
+
+    }
+
+    private static string FormatDuration(double ms) =>
+        ms < 1000 ? $"{Math.Round(ms):0} ms" : $"{ms / 1000:0.00} seconds";
+
+    private static string FormatNumber(int value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    // ------------------------------------------------------------------ load / open
+
+    /// <summary>Opening another file (toolbar Open, drag and drop) first unloads the current one.</summary>
+    private void OnDocumentUnloaded(UnloadEventArgs args)
+    {
+        CancelSearchFinalizeTimer();
+        Start("load");
+    }
+
+    private void OnDocumentLoaded(LoadEventArgs args)
+    {
+        pageCount = args.PageData?.PageCount ?? 0;
+        Finish("load", d => $"Opened {args.DocumentName} ({FormatNumber(pageCount)} pages) in {d}");
+    }
+
+    // ------------------------------------------------------------------ download / print
+
+    private void OnDownloadStart(DownloadStartEventArgs args) => Start("download");
+
+    private void OnDownloadEnd(DownloadEndEventArgs args) =>
+        Finish("download", d => $"Downloaded {FormatNumber(pageCount)} pages in {d}");
+
+    private void OnPrintStart(PrintStartEventArgs args) => Start("print");
+
+    private void OnPrintEnd(PrintEndEventArgs args) =>
+        Finish("print", d => $"Ready to print {FormatNumber(pageCount)} pages in {d}");
+
+    // ------------------------------------------------------------------ navigation
+
+    /// <summary>
+    /// The Blazor viewer has no "page drawn" event, so a page change is timed from the user's
+    /// click, key press, or scroll (in the browser) until the PageChanged event is handled.
+    /// In Server mode this includes the round trip to the server.
+    /// </summary>
+    private async Task OnPageChanged(PageChangeEventArgs args)
+    {
+        if (timers.ContainsKey("load")) return; // page changes while a document opens are part of the load
+        var ms = await JS.InvokeAsync<double>("pdfPerf.sinceInteraction", InteractionWindowMs);
+        if (ms < 0) return;
+        message = $"Moved to page {FormatNumber(args.CurrentPageNumber)} of {FormatNumber(pageCount)} in {FormatDuration(ms)}";
+        Console.WriteLine($"[PDF Viewer performance] {message}");
+        StateHasChanged();
+    }
+
+    // ------------------------------------------------------------------ text search
+    // The whole measurement rides on two viewer events:
+    //   OnTextSearchStart      → open the stopwatch, remember the term, arm the finalize timer
+    //   OnTextSearchHighlight  → count every match, stamp the first-match time,
+    //                            and reset the finalize timer; when no further highlight
+    //                            arrives within SearchFinalizeDelayMs, the stopwatch is
+    //                            closed and the result message is emitted.
+    // Each search logs exactly once. `searchLogged` guards FinalizeSearch so duplicate
+    // timer's from a re-arming highlight cannot emit a second popup for the same term.
+
+    private void CancelSearchFinalizeTimer()
+    {
+        if (searchFinalizeTimer is null) return;
+        searchFinalizeTimer.Stop();
+        searchFinalizeTimer.Dispose();
+        searchFinalizeTimer = null;
+    }
+
+    private void ArmSearchFinalizeTimer()
+    {
+        CancelSearchFinalizeTimer();
+        searchFinalizeTimer = new System.Timers.Timer(SearchFinalizeDelayMs) { AutoReset = false };
+        searchFinalizeTimer.Elapsed += (_, _) => InvokeAsync(FinalizeSearch);
+        searchFinalizeTimer.Start();
+    }
+
+    private void FinalizeSearch()
+    {
+        CancelSearchFinalizeTimer();
+        if (searchLogged) return; // already logged for this search — never emit twice
+        if (!timers.TryGetValue("search", out var stopwatch)) return;
+        searchLogged = true;
+        var first = firstMatchMs > 0
+            ? $" (first match in {FormatDuration(firstMatchMs)})"
+            : "";
+        if (searchMatchCount == 0)
+        {
+            Finish("search", d => $"No matches for \"{searchTerm}\" in {FormatNumber(pageCount)} pages (searched in {d})");
+        }
+        else
+        {
+            Finish("search", d => $"Found {FormatNumber(searchMatchCount)} matches for \"{searchTerm}\" in {FormatNumber(pageCount)} pages in {d}{first}");
+        }
+    }
+
+    private void OnTextSearchStart(TextSearchStartEventArgs args)
+    {
+        searchTerm = args.SearchText;
+        searchMatchCount = 0;
+        firstMatchMs = 0;
+        searchLogged = false;
+        Start("search");
+        ArmSearchFinalizeTimer();
+    }
+
+    private void OnTextSearchHighlight(TextSearchHighlightEventArgs args)
+    {
+        if (searchLogged) return; // search already finalized — ignore late highlights
+        if (!timers.TryGetValue("search", out var stopwatch)) return;
+        searchMatchCount += 1;
+        if (firstMatchMs == 0)
+        {
+            firstMatchMs = stopwatch.Elapsed.TotalMilliseconds;
+        }
+        ArmSearchFinalizeTimer();
+    }
+
+    public void Dispose()
+    {
+        CancelSearchFinalizeTimer();
+    }
+}
