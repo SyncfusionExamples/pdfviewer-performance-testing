@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Viewer performance (JavaScript ES6)</title>
+</head>
+<body>
+  <div class="app">
+    <!-- The single result message: how long the last viewer action took -->
+    <div id="result-bar" class="result-bar" role="status" aria-live="polite">
+      <span class="result-icon" aria-hidden="true"></span>
+      <span class="result-text"></span>
+    </div>
+    <!-- The standard Syncfusion PDF Viewer with its built-in toolbar -->
+    <div class="viewer-host">
+      <div id="container"></div>
+    </div>
+  </div>
+</body>
+</html>
