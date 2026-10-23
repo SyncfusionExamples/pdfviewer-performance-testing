@@ -9,16 +9,10 @@ namespace PerformanceWithout
         public MainPage()
         {
             InitializeComponent();
-            Stream? stream = typeof(App).GetTypeInfo().Assembly.GetManifestResourceStream("PerformanceWithout.100Mb_file.pdf");
+            Stream? stream = typeof(App).GetTypeInfo().Assembly.GetManifestResourceStream("PerformanceWithout.PDF_Succinctly.pdf");
             pdfViewer.DocumentLoaded += PdfViewer_DocumentLoaded;
             stopwatch.Start();
             pdfViewer.LoadDocument(stream);
-            pdfViewer.PrintDocumentCompleted += PdfViewer_PrintDocumentCompleted;
-        }
-
-        private void PdfViewer_PrintDocumentCompleted(object? sender, Syncfusion.Maui.PdfViewer.PrintDocumentCompletedEventArgs e)
-        {
-            
         }
 
         private async void PdfViewer_DocumentLoaded(object? sender, EventArgs? e)
@@ -56,14 +50,7 @@ namespace PerformanceWithout
         private void Button_Clicked2(object sender, EventArgs e)
         {
             pdfViewer.UnloadDocument();
-            Stream? stream = typeof(App).GetTypeInfo().Assembly.GetManifestResourceStream("PerformanceWithout.100Mb_file.pdf");
-            stopwatch.Restart();
-            pdfViewer.LoadDocument(stream);
-        }
-        private void Button_Clicked3(object sender, EventArgs e)
-        {
-            pdfViewer.UnloadDocument();
-            Stream? stream = typeof(App).GetTypeInfo().Assembly.GetManifestResourceStream("PerformanceWithout.JUTA 01 SO13 I.etapa-I.NP část A200x200pdf 2.pdf");
+            Stream? stream = typeof(App).GetTypeInfo().Assembly.GetManifestResourceStream("PerformanceWithout.PDF_Succinctly.pdf");
             stopwatch.Restart();
             pdfViewer.LoadDocument(stream);
         }
@@ -72,7 +59,6 @@ namespace PerformanceWithout
         {
             MemoryStream mStream = new MemoryStream();
             pdfViewer.SaveDocument(mStream);
-            //File.WriteAllBytes("D://ModifiedPDF.pdf", mStream.ToArray());
             stopwatch.Restart();
             pdfViewer.LoadDocument(mStream);
         }

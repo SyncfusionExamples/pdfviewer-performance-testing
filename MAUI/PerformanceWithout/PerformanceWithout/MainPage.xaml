@@ -7,10 +7,8 @@
     <Grid RowDefinitions="Auto,*">
             <ScrollView Grid.Row="0" Orientation="Both">
                 <HorizontalStackLayout>
-                <Button Text="PDF1" Clicked="Button_Clicked1"/>
-                <Button Text="PDF2" Clicked="Button_Clicked2"/>
-                <Button Text="PDF3" Clicked="Button_Clicked2"/>
-                <Button Text="PDF4" Clicked="Button_Clicked3"/>
+                <Button Text="PDF 10MB" Clicked="Button_Clicked1"/>
+                <Button Text="PDF_Succinctly" Clicked="Button_Clicked2"/>
                 <Button Text="Save" Clicked="Button_Clicked4"/>
 
             </HorizontalStackLayout>
