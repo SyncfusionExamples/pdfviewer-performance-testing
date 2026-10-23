@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:syncfusion="clr-namespace:Syncfusion.Maui.PdfViewer;assembly=Syncfusion.Maui.PdfViewer"
+             x:Class="PerformanceWithout.MainPage">
+
+    <Grid RowDefinitions="Auto,*">
+            <ScrollView Grid.Row="0" Orientation="Both">
+                <HorizontalStackLayout>
+                <Button Text="PDF 10MB" Clicked="Button_Clicked1"/>
+                <Button Text="PDF_Succinctly" Clicked="Button_Clicked2"/>
+                <Button Text="Save" Clicked="Button_Clicked4"/>
+
+            </HorizontalStackLayout>
+            </ScrollView>
+            <syncfusion:SfPdfViewer x:Name="pdfViewer" Grid.Row="1" MinZoomFactor="0.1" />
+        </Grid>
+
+    </ContentPage>
